@@ -2,7 +2,15 @@ import PIL as pil
 from PIL import Image
 
 class LSB:
+    """
+    Class to hide and extract secret messages in images using the enhanced Least Significant Bit (LSB) method with
+    variable bit embedding capacity.
+    """
     def __init__(self, image: Image, secret_message: str = None):
+        """
+        :param image: PIL.Image object
+        :param secret_message: str. If None, the class will decode the secret message from the image.
+        """
         self.image = image
         self.binary_image = self._encode_image()
         self.num_of_bits_to_embed = []
@@ -63,7 +71,7 @@ class LSB:
     @staticmethod
     def _encode_secret_message(secret_message: str) -> str:
         # converts str to binary string
-        return ''.join(f'{byte:08b}' for byte in secret_message.encode('utf-8'))
+        return ''.join(f'{byte:08b}' for byte in secret_message.encode('utf-8')) + '1111111111111110' # add the delimiter
 
     def _encode_image(self) -> list:
         image = self.image.convert('RGB')
@@ -127,4 +135,64 @@ class LSB:
         return new_image
 
     def _decode_secret_message(self) -> str:
-        pass
+        binary_secret_message = ''
+        secret_message = ''
+        for i in range(len(self.binary_image)):
+            r = self.binary_image[i][0]
+            g = self.binary_image[i][1]
+            b = self.binary_image[i][2]
+
+
+            binary_secret_message += r[-self.num_of_bits_to_embed[i][0]:] + g[-self.num_of_bits_to_embed[i][1]:] + b[-self.num_of_bits_to_embed[i][2]:]
+
+        delimiter_index = binary_secret_message.find('1111111111111110')
+        if delimiter_index != -1:
+            binary_secret_message = binary_secret_message[:delimiter_index]
+
+        # Convert binary string to bytes
+        byte_array = bytearray()
+        for i in range(0, len(binary_secret_message), 8):
+            byte_array.append(int(binary_secret_message[i:i + 8], 2))
+
+        # Decode bytes to UTF-8 string
+        return byte_array.decode('utf-8')
+
+class PVD:
+    """
+    Class to hide and extract secret messages in images using the Pixel Value Differencing (PVD) method.
+    """
+    def __init__(self, image: Image, secret_message: str = None):
+        """
+        :param image: PIL.Image object
+        :param secret_message: str. If None, the class will decode the secret message from the image.
+        """
+        self.image = image
+        self.binary_image = self._encode_image()
+        self.secret_message = secret_message
+
+    def _encode_image(self) -> list:
+        image = self.image.convert('RGB')
+        pixel_values = list(image.getdata())
+        binary_pixel_values = [(format(r, '08b'), format(g, '08b'), format(b, '08b')) for r, g, b in pixel_values]
+
+        return binary_pixel_values
+
+class DE:
+    """
+    Class to hide and extract secret messages in images using the Difference Expansion (DE) method.
+    """
+    def __init__(self, image: Image, secret_message: str = None):
+        """
+        :param image: PIL.Image object
+        :param secret_message: str. If None, the class will decode the secret message from the image.
+        """
+        self.image = image
+        self.binary_image = self._encode_image()
+        self.secret_message = secret_message
+
+    def _encode_image(self) -> list:
+        image = self.image.convert('RGB')
+        pixel_values = list(image.getdata())
+        binary_pixel_values = [(format(r, '08b'), format(g, '08b'), format(b, '08b')) for r, g, b in pixel_values]
+
+        return binary_pixel_values

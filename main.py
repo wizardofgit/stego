@@ -25,7 +25,6 @@ if __name__ == '__main__':
     except:
         raise Exception('Error: Secret message not selected or invalid secret message path')
 
-    # print(''.join(f'{byte:08b}' for byte in secret_message.encode('utf-8')))
-
     secret_img = LSB(image, secret_message).secret_image
-    secret_img.show()
+    decoded_message = LSB(secret_img).decoded_secret_message
+    print(decoded_message)
