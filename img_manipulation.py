@@ -1,5 +1,7 @@
 import PIL as pil
 from PIL import Image
+from unicodedata import lookup
+
 
 class LSB:
     """
@@ -136,7 +138,6 @@ class LSB:
 
     def _decode_secret_message(self) -> str:
         binary_secret_message = ''
-        secret_message = ''
         for i in range(len(self.binary_image)):
             r = self.binary_image[i][0]
             g = self.binary_image[i][1]
@@ -156,6 +157,131 @@ class LSB:
 
         # Decode bytes to UTF-8 string
         return byte_array.decode('utf-8')
+
+class DE:
+    """
+    Class to hide and extract secret messages in images using the Difference Expansion (DE) method.
+    """
+    def __init__(self, image: Image, secret_message: str = None, lookup_string: str = None):
+        """
+        :param image: PIL.Image object
+        :param secret_message: str. If None, the class will decode the secret message from the image.
+        :param lookup_string: str. Used for decoding messages.
+        """
+        self.image = image
+        self.channel_values = self._encode_image()
+
+        if secret_message is not None:
+            self.secret_message = secret_message
+            self.encoded_secret_message = self._encode_secret_message(secret_message)
+            self.secret_image, self.lookup_string = self._embed_secret_message()
+        else:
+            self.lookup_string = lookup_string
+            self.decoded_secret_message, self.original_image = self._decode_secret_message()
+
+
+    def _encode_image(self) -> list:
+        image = self.image.convert('RGB')
+        pixel_values = list(image.getdata())
+        channel_values = [value for pixel in pixel_values for value in pixel]
+
+        return channel_values
+
+    def _embed_secret_message(self) -> (Image, str):
+        """
+        Embeds the secret message in the image using the DE method.
+
+        At the moment uses very inefficient method - it first checks how long will the lookup table be and then
+        concatenates the lookup table to the secret message. Then it embeds the lookup table in the image.
+        """
+        secret_image_channel_values = []
+        secret_bit_index = 0
+        lookup_string = '' # check if pair was encoded or not
+
+        for i in range(0, len(self.channel_values), 2):
+            x, y = self.channel_values[i], self.channel_values[i + 1]
+
+            if secret_bit_index < len(self.encoded_secret_message):
+                d = x - y
+                l = (x + y) // 2
+
+                d_prime = 2 * d + int(self.encoded_secret_message[secret_bit_index])
+                x_prime = l + (d_prime + 1) // 2
+                y_prime = l - d_prime // 2
+                if x_prime < 0 or x_prime > 255 or y_prime < 0 or y_prime > 255:
+                    secret_image_channel_values.append(x)
+                    secret_image_channel_values.append(y)
+                    lookup_string += '0'
+                else:
+                    secret_image_channel_values.append(x_prime)
+                    secret_image_channel_values.append(y_prime)
+                    secret_bit_index += 1
+                    lookup_string += '1'
+
+        if secret_bit_index < len(self.encoded_secret_message) - 1:
+            raise Exception('Error: Image does not have enough capacity to hide the secret message')
+        else:
+            if len(secret_image_channel_values) < len(self.channel_values):
+                secret_image_channel_values += self.channel_values[len(secret_image_channel_values):]
+            return self._create_image_from_channel_values(secret_image_channel_values), lookup_string
+
+    def _decode_secret_message(self) -> (str, Image):
+        secret_message = ''
+        original_image_channel_values = []
+        lookup_string_index = 0
+
+        for i in range(0, len(self.channel_values), 2):
+            x_prime, y_prime = self.channel_values[i], self.channel_values[i + 1]
+
+            if lookup_string_index < len(self.lookup_string):
+                if self.lookup_string[lookup_string_index] == '1':
+                    d_prime = x_prime - y_prime
+                    l_prime = (x_prime + y_prime) // 2
+
+                    b = str(d_prime & 1)  # extract LSB from d
+                    d = d_prime // 2
+
+                    x = l_prime + (d + 1) // 2
+                    y = l_prime - d // 2
+
+                    original_image_channel_values.append(x)
+                    original_image_channel_values.append(y)
+                    secret_message += str(b)
+                else:
+                    original_image_channel_values.append(x_prime)
+                    original_image_channel_values.append(y_prime)
+                lookup_string_index += 1
+            else:
+                original_image_channel_values.append(x_prime)
+                original_image_channel_values.append(y_prime)
+
+        # Convert binary string to bytes
+        byte_array = bytearray()
+        for i in range(0, len(secret_message), 8):
+            byte_array.append(int(secret_message[i:i + 8], 2))
+
+        # if byte_array[-1] == 0x17:
+        #     byte_array = byte_array[:-1]
+
+        # check if image is correct length
+        if len(original_image_channel_values) < len(self.channel_values):
+            original_image_channel_values += self.channel_values[len(original_image_channel_values):]
+
+        # return byte_array.decode('utf-8'), self._create_image_from_channel_values(original_image_channel_values)
+        return byte_array.decode('utf-8'), self._create_image_from_channel_values(original_image_channel_values)
+
+    @staticmethod
+    def _encode_secret_message(secret_message: str) -> str:
+        # converts str to binary string
+        return ''.join(
+            f'{byte:08b}' for byte in secret_message.encode('utf-8'))
+
+    def _create_image_from_channel_values(self, channel_values) -> Image:
+        width, height = self.image.size
+        pixel_values = [tuple(channel_values[i:i + 3]) for i in range(0, len(self.channel_values), 3)]
+        new_image = Image.new('RGB', (width, height))
+        new_image.putdata(pixel_values)
+        return new_image
 
 class PVD:
     """
@@ -177,22 +303,8 @@ class PVD:
 
         return binary_pixel_values
 
-class DE:
-    """
-    Class to hide and extract secret messages in images using the Difference Expansion (DE) method.
-    """
-    def __init__(self, image: Image, secret_message: str = None):
-        """
-        :param image: PIL.Image object
-        :param secret_message: str. If None, the class will decode the secret message from the image.
-        """
-        self.image = image
-        self.binary_image = self._encode_image()
-        self.secret_message = secret_message
+    @staticmethod
+    def _encode_secret_message(secret_message: str) -> str:
+        # converts str to binary string
+        return ''.join(f'{byte:08b}' for byte in secret_message.encode('utf-8')) + '1111111111111110' # add the delimiter
 
-    def _encode_image(self) -> list:
-        image = self.image.convert('RGB')
-        pixel_values = list(image.getdata())
-        binary_pixel_values = [(format(r, '08b'), format(g, '08b'), format(b, '08b')) for r, g, b in pixel_values]
-
-        return binary_pixel_values
