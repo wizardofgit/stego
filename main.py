@@ -5,6 +5,8 @@ import PIL.ImageShow
 from PIL import Image
 from img_manipulation import LSB
 from img_manipulation import DE
+from img_manipulation import PVD
+import numpy as np
 
 if __name__ == '__main__':
     tk.Tk().withdraw()
@@ -31,10 +33,14 @@ if __name__ == '__main__':
     # decoded_message = LSB(secret_img).decoded_secret_message
     # print(decoded_message)
     # PIL.ImageShow.show(DE(image, secret_message).secret_image)
-    secret = DE(image, secret_message)
-    secret_img = secret.secret_image
-    de = DE(secret_img, secret_message=None, lookup_string=secret.lookup_string)
-    # print(secret.lookup_string)
-    decoded_message, original_image= de.decoded_secret_message, de.original_image
-    print(decoded_message)
-    PIL.ImageShow.show(original_image)
+    # secret = DE(image, secret_message)
+    # secret_img = secret.secret_image
+    # de = DE(secret_img, secret_message=None, lookup_string=secret.lookup_string)
+    # # print(secret.lookup_string)
+    # decoded_message, original_image= de.decoded_secret_message, de.original_image
+    # print(decoded_message)
+    # PIL.ImageShow.show(original_image)
+    # secret_img = PVD(image, secret_message).secret_image
+    # PIL.ImageShow.show(secret_img)
+    # decoded_message = PVD(secret_img).decoded_secret_message
+    # print(decoded_message)

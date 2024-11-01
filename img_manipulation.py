@@ -1,7 +1,8 @@
 import PIL as pil
 from PIL import Image
+from numpy import ndarray
 from unicodedata import lookup
-
+import numpy as np
 
 class LSB:
     """
@@ -293,18 +294,121 @@ class PVD:
         :param secret_message: str. If None, the class will decode the secret message from the image.
         """
         self.image = image
-        self.binary_image = self._encode_image()
-        self.secret_message = secret_message
+        self.image_width, self.image_height = image.size
+        self.image_array = self._encode_image()
+        if secret_message is not None:
+            self.secret_message = secret_message
+            self.encoded_secret_message = self._encode_secret_message(secret_message)
+            self.secret_image = self._embed_secret_message()
+        else:
+            self.decoded_secret_message = self._decode_secret_message()
 
-    def _encode_image(self) -> list:
+
+    def _encode_image(self) -> ndarray:
         image = self.image.convert('RGB')
-        pixel_values = list(image.getdata())
-        binary_pixel_values = [(format(r, '08b'), format(g, '08b'), format(b, '08b')) for r, g, b in pixel_values]
+        width, height = image.size
+        # turn the image object into an array
+        img_array = np.array(list(image.getdata())).reshape((height, width, 3))
 
-        return binary_pixel_values
+        return img_array
 
     @staticmethod
     def _encode_secret_message(secret_message: str) -> str:
         # converts str to binary string
         return ''.join(f'{byte:08b}' for byte in secret_message.encode('utf-8')) + '1111111111111110' # add the delimiter
 
+    def _embed_secret_message(self) -> Image:
+        secret_bits_index = 0
+        message_encoded = False
+        secret_image = self.image_array.copy()
+
+        for i in range(1, self.image_height-1, 2):
+            if not message_encoded:
+                for j in range(1, self.image_width-1, 2):
+                    if not message_encoded:
+                        for k in range(3):
+                            if not message_encoded:
+                                p_u = self.image_array[i - 1, j, k]
+                                p_b = self.image_array[i + 1, j, k]
+                                p_l = self.image_array[i, j - 1, k]
+                                p_r = self.image_array[i, j + 1, k]
+                                p_ur = self.image_array[i - 1, j + 1, k]
+                                p_x = self.image_array[i, j, k]
+
+                                d = np.max([p_u, p_b, p_l, p_r, p_ur]) - np.min([p_u, p_b, p_l, p_r, p_ur])
+
+                                if 0 <= d <= 1:
+                                    n = 1
+                                else:
+                                    n = min(4, int(round(np.log2(d), 0)))
+
+                                if secret_bits_index < len(self.encoded_secret_message):
+                                    secret_bits = self.encoded_secret_message[secret_bits_index : secret_bits_index + n]
+                                    secret_bits_index += n
+                                else:
+                                    message_encoded = True
+                                    break
+
+                                p_x_prime = p_x - (p_x % 2**n) + int(secret_bits, 2)
+                                delta = p_x_prime - p_x
+
+                                if 2**(n-1) < delta < 2**n and p_x_prime >= 2**n:
+                                    p_x_prime = p_x_prime - 2**n
+                                if -2**n < delta < -2**(n-1) and p_x_prime < 256 - 2**n:
+                                    p_x_prime = p_x_prime + 2**n
+
+                                secret_image[i, j, k] = p_x_prime
+                            else:
+                                break
+                    else:
+                        break
+            else:
+                break
+
+        if not message_encoded:
+            raise Exception('Error: Image does not have enough capacity to hide the secret message')
+        return Image.fromarray(secret_image.astype('uint8'), 'RGB')
+
+    def _decode_secret_message(self) -> str:
+        secret_message = ''
+        delimiter_index = -1
+
+        for i in range(1, self.image_height-1, 2):
+            for j in range(1, self.image_width-1, 2):
+                for k in range(3):
+                    p_u = self.image_array[i - 1, j, k]
+                    p_b = self.image_array[i + 1, j, k]
+                    p_l = self.image_array[i, j - 1, k]
+                    p_r = self.image_array[i, j + 1, k]
+                    p_ur = self.image_array[i - 1, j + 1, k]
+                    p_x = self.image_array[i, j, k]
+
+                    d = np.max([p_u, p_b, p_l, p_r, p_ur]) - np.min([p_u, p_b, p_l, p_r, p_ur])
+
+                    if 0 <= d <= 1:
+                        n = 1
+                    else:
+                        n = min(4, int(round(np.log2(d), 0)))
+
+                    secret_message += bin(p_x % 2**n)[2:].zfill(n)
+
+                    delimiter_index = secret_message.find('1111111111111110')
+
+                    if delimiter_index != -1:
+                        secret_message = secret_message[:delimiter_index]
+                        break
+                if delimiter_index != -1:
+                    break
+            if delimiter_index != -1:
+                break
+
+        if delimiter_index == -1:
+            raise Exception('Error: Could not find the delimiter in the image')
+
+        # Convert binary string to bytes
+        byte_array = bytearray()
+        for i in range(0, len(secret_message), 8):
+            byte_array.append(int(secret_message[i:i + 8], 2))
+
+        # Decode bytes to UTF-8 string
+        return byte_array.decode('utf-8', errors='ignore')
