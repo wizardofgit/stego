@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import filedialog
-import PIL as pil
 import PIL.ImageShow
 from PIL import Image
 from img_manipulation import LSB

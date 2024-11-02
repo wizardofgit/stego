@@ -1,8 +1,8 @@
-import PIL as pil
+from PIL import Image
+import numpy as np
 from PIL import Image
 from numpy import ndarray
-from unicodedata import lookup
-import numpy as np
+from time import time
 
 class LSB:
     """
@@ -14,6 +14,7 @@ class LSB:
         :param image: PIL.Image object
         :param secret_message: str. If None, the class will decode the secret message from the image.
         """
+        self.time_start = time()
         self.image = image
         self.binary_image = self._encode_image()
         self.num_of_bits_to_embed = []
@@ -26,8 +27,13 @@ class LSB:
             self._check_if_image_fits()
 
             self.secret_image = self._embed_secret_message()
+            self.time_end = time()
         else:
             self.decoded_secret_message = self._decode_secret_message()
+            self.time_end = time()
+
+        # calculate the time it took to encode/decode the secret message
+        self.time_diff = self.time_end - self.time_start
 
     def _calculate_image_capacity(self, binary_pixel_values: list) -> int:
         # calculate the amount of bits that can be hidden in the image
@@ -169,6 +175,7 @@ class DE:
         :param secret_message: str. If None, the class will decode the secret message from the image.
         :param lookup_string: str. Used for decoding messages.
         """
+        self.time_start = time()
         self.image = image
         self.channel_values = self._encode_image()
 
@@ -176,10 +183,14 @@ class DE:
             self.secret_message = secret_message
             self.encoded_secret_message = self._encode_secret_message(secret_message)
             self.secret_image, self.lookup_string = self._embed_secret_message()
+            self.time_end = time()
         else:
             self.lookup_string = lookup_string
             self.decoded_secret_message, self.original_image = self._decode_secret_message()
+            self.time_end = time()
 
+        # calculate the time it took to encode/decode the secret message
+        self.time_diff = self.time_end - self.time_start
 
     def _encode_image(self) -> list:
         image = self.image.convert('RGB')
@@ -191,9 +202,6 @@ class DE:
     def _embed_secret_message(self) -> (Image, str):
         """
         Embeds the secret message in the image using the DE method.
-
-        At the moment uses very inefficient method - it first checks how long will the lookup table be and then
-        concatenates the lookup table to the secret message. Then it embeds the lookup table in the image.
         """
         secret_image_channel_values = []
         secret_bit_index = 0
@@ -218,12 +226,15 @@ class DE:
                     secret_image_channel_values.append(y_prime)
                     secret_bit_index += 1
                     lookup_string += '1'
+            else:
+                break
 
         if secret_bit_index < len(self.encoded_secret_message) - 1:
             raise Exception('Error: Image does not have enough capacity to hide the secret message')
         else:
             if len(secret_image_channel_values) < len(self.channel_values):
                 secret_image_channel_values += self.channel_values[len(secret_image_channel_values):]
+
             return self._create_image_from_channel_values(secret_image_channel_values), lookup_string
 
     def _decode_secret_message(self) -> (str, Image):
@@ -293,6 +304,7 @@ class PVD:
         :param image: PIL.Image object
         :param secret_message: str. If None, the class will decode the secret message from the image.
         """
+        self.time_start = time()
         self.image = image
         self.image_width, self.image_height = image.size
         self.image_array = self._encode_image()
@@ -300,9 +312,13 @@ class PVD:
             self.secret_message = secret_message
             self.encoded_secret_message = self._encode_secret_message(secret_message)
             self.secret_image = self._embed_secret_message()
+            self.time_end = time()
         else:
             self.decoded_secret_message = self._decode_secret_message()
+            self.time_end = time()
 
+        # calculate the time it took to encode/decode the secret message
+        self.time_diff = self.time_end - self.time_start
 
     def _encode_image(self) -> ndarray:
         image = self.image.convert('RGB')
