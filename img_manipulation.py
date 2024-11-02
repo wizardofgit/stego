@@ -412,3 +412,18 @@ class PVD:
 
         # Decode bytes to UTF-8 string
         return byte_array.decode('utf-8', errors='ignore')
+
+def calculate_mse(img1: Image, img2: Image) -> float:
+    img_pixels_1 = img1.getdata()
+    img_pixels_2 = img2.getdata()
+
+    sum_of_abs_diff = 0
+
+    for pixel1, pixel2 in img_pixels_1, img_pixels_2:
+        for channel in range(3):
+            sum_of_abs_diff += abs(pixel1[channel] - pixel2[channel])
+
+    return sum_of_abs_diff / (img1.size[0] * img1.size[1] * 3)
+
+def calculate_psnr(img1: Image, img2: Image) -> float:
+    return 10 * np.log10(255**2 / calculate_mse(img1, img2))
