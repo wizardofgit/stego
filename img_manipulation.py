@@ -1,8 +1,9 @@
-from PIL import Image
 import numpy as np
 from PIL import Image
 from numpy import ndarray
 from time import time
+import cv2
+from pywt import dwtn, idwtn
 
 class LSB:
     """
@@ -429,13 +430,192 @@ class PVD:
         # Decode bytes to UTF-8 string
         return byte_array.decode('utf-8', errors='ignore')
 
+class DCT:
+    def __init__(self, image: Image, secret_message: str = None):
+        self.start_time = time()
+        self.image = image.convert('RGB')
+
+        if secret_message is not None:
+            self.secret_message = secret_message
+            self.encoded_secret_message = self._encode_secret_message(secret_message)
+            self.secret_image = self._embed_secret_message()
+        else:
+            self.secret_message = self._decode_secret_message()
+
+        self.time_diff = time() - self.start_time
+
+    @staticmethod
+    def _encode_secret_message(secret_message: str) -> str:
+        # converts str to binary string
+        return ''.join(
+            f'{byte:08b}' for byte in secret_message.encode('utf-8')) + '1111111111111110'  # add the delimiter
+
+    def _embed_secret_message(self) -> Image:
+        pass
+
+    def _decode_secret_message(self) -> str:
+        pass
+
+class IWT:
+    def __init__(self, image: Image, secret_message: str = None):
+        self.start_time = time()
+        self.image = image.convert('RGB')
+
+        if secret_message is not None:
+            self.secret_message = secret_message
+            self.encoded_secret_message = self._encode_secret_message(secret_message)
+            self.secret_image = self._embed_secret_message()
+        else:
+            self.secret_message, self.original_image = self._decode_secret_message()
+
+        self.time_diff = time() - self.start_time
+
+    @staticmethod
+    def _encode_secret_message(secret_message: str) -> str:
+        # converts str to binary string
+        return ''.join(
+            f'{byte:08b}' for byte in secret_message.encode('utf-8')) + '1111111111111110'  # add the delimiter
+
+    def _embed_secret_message(self) -> Image:
+        r_channel, g_channel, b_channel = self.image.split()
+        r_pixels = np.array(r_channel)
+        g_pixels = np.array(g_channel)
+        b_pixels = np.array(b_channel)
+
+        # Wavelet decomposition
+        r_coeffs = dwtn(r_pixels, 'bior1.1', mode='periodization')
+        g_coeffs = dwtn(g_pixels, 'bior1.1', mode='periodization')
+        b_coeffs = dwtn(b_pixels, 'bior1.1', mode='periodization')
+
+        # Flatten subband coefficients for easy access
+        r_aa = r_coeffs['aa'].flatten()
+        g_aa = g_coeffs['aa'].flatten()
+        b_aa = b_coeffs['aa'].flatten()
+
+        bits_embedded = 0
+        coef_index = 0
+        total_bits = len(self.encoded_secret_message)
+
+        # Embed message bits into LSB of coefficients
+        while bits_embedded < total_bits:
+            r_aa[coef_index] = int(r_aa[coef_index]) & ~1 | int(self.encoded_secret_message[bits_embedded])
+            bits_embedded += 1
+
+            if bits_embedded < total_bits:
+                g_aa[coef_index] = int(g_aa[coef_index]) & ~1 | int(self.encoded_secret_message[bits_embedded])
+                bits_embedded += 1
+            else:
+                break
+
+            if bits_embedded < total_bits:
+                b_aa[coef_index] = int(b_aa[coef_index]) & ~1 | int(self.encoded_secret_message[bits_embedded])
+                bits_embedded += 1
+            else:
+                break
+
+            coef_index += 1
+
+            if coef_index >= len(r_aa):
+                raise Exception('Error: Image does not have enough capacity to hide the secret message')
+
+        # Reshape subbands to their original shape
+        r_coeffs['aa'] = r_aa.reshape(r_coeffs['aa'].shape)
+        g_coeffs['aa'] = g_aa.reshape(g_coeffs['aa'].shape)
+        b_coeffs['aa'] = b_aa.reshape(b_coeffs['aa'].shape)
+
+        # Wavelet reconstruction
+        r_pixels = idwtn(r_coeffs, 'bior1.1', mode='periodization')
+        g_pixels = idwtn(g_coeffs, 'bior1.1', mode='periodization')
+        b_pixels = idwtn(b_coeffs, 'bior1.1', mode='periodization')
+
+        # Convert to uint8
+        r_pixels = np.clip(r_pixels, 0, 255).astype('uint8')
+        g_pixels = np.clip(g_pixels, 0, 255).astype('uint8')
+        b_pixels = np.clip(b_pixels, 0, 255).astype('uint8')
+
+        # Merge channels into a single image
+        r_channel = Image.fromarray(r_pixels)
+        g_channel = Image.fromarray(g_pixels)
+        b_channel = Image.fromarray(b_pixels)
+
+        return Image.merge('RGB', (r_channel, g_channel, b_channel))
+
+    def _decode_secret_message(self) -> (str, Image):
+        from math import ceil
+
+        # Split the modified image into RGB channels
+        r_channel, g_channel, b_channel = self.image.split()
+        r_pixels = np.array(r_channel)
+        g_pixels = np.array(g_channel)
+        b_pixels = np.array(b_channel)
+
+        # Perform wavelet decomposition
+        r_coeffs = dwtn(r_pixels, 'bior1.1', mode='periodization')
+        g_coeffs = dwtn(g_pixels, 'bior1.1', mode='periodization')
+        b_coeffs = dwtn(b_pixels, 'bior1.1', mode='periodization')
+
+        # Flatten the 'aa' subbands for decoding
+        r_aa = r_coeffs['aa'].flatten()
+        g_aa = g_coeffs['aa'].flatten()
+        b_aa = b_coeffs['aa'].flatten()
+
+        # Decode the secret message from LSBs
+        extracted_bits = []
+        coef_index = 0
+
+        while coef_index < len(r_aa):  # Assume enough coefficients to hold the message
+            extracted_bits.append(int(r_aa[coef_index]) & 1)
+            coef_index += 1
+
+            if coef_index < len(g_aa):
+                extracted_bits.append(int(g_aa[coef_index]) & 1)
+                coef_index += 1
+
+            if coef_index < len(b_aa):
+                extracted_bits.append(int(b_aa[coef_index]) & 1)
+                coef_index += 1
+
+        # Find the delimiter index
+        extracted_bits = ''.join(map(str, extracted_bits))
+        delimiter_index = extracted_bits.find('1111111111111110')
+        if delimiter_index != -1:
+            extracted_bits = extracted_bits[:delimiter_index]
+
+        # Convert the bits to the original message string
+        bit_string = ''.join(map(str, extracted_bits))
+        secret_message = ''.join(
+            chr(int(bit_string[i:i + 8], 2)) for i in range(0, len(bit_string), 8)
+        )
+
+        # Reconstruct the original image (by restoring coefficients if needed)
+        # If coefficients were only altered in the LSB, no restoration is required
+        # Simply reconstruct the image from the current coefficients
+        r_pixels = idwtn(r_coeffs, 'bior1.1', mode='periodization')
+        g_pixels = idwtn(g_coeffs, 'bior1.1', mode='periodization')
+        b_pixels = idwtn(b_coeffs, 'bior1.1', mode='periodization')
+
+        # Convert to uint8
+        r_pixels = np.clip(r_pixels, 0, 255).astype('uint8')
+        g_pixels = np.clip(g_pixels, 0, 255).astype('uint8')
+        b_pixels = np.clip(b_pixels, 0, 255).astype('uint8')
+
+        # Merge channels into the original image
+        r_channel = Image.fromarray(r_pixels)
+        g_channel = Image.fromarray(g_pixels)
+        b_channel = Image.fromarray(b_pixels)
+
+        original_image = Image.merge('RGB', (r_channel, g_channel, b_channel))
+
+        return secret_message, original_image
+
+
 def calculate_mse(img1: Image, img2: Image) -> float:
     img_pixels_1 = img1.getdata()
     img_pixels_2 = img2.getdata()
 
     sum_of_abs_diff = 0
 
-    for pixel1, pixel2 in img_pixels_1, img_pixels_2:
+    for pixel1, pixel2 in zip(img_pixels_1, img_pixels_2):
         for channel in range(3):
             sum_of_abs_diff += abs(pixel1[channel] - pixel2[channel])
 
