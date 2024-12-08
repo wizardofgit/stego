@@ -23,7 +23,7 @@ class SteganographyGUI(tk.Tk):
 
         self.algorithm_var = tk.StringVar()
         self.algorithm_menu = ttk.Combobox(
-            algorithm_frame, textvariable=self.algorithm_var, values=["LSB", "DE", "PVD", "DCT", "IWT"], width=25
+            algorithm_frame, textvariable=self.algorithm_var, values=["LSB", "DE", "PVD"], width=25
         )
         self.algorithm_menu.grid(row=0, column=1, sticky="ew")
         self.algorithm_menu.bind("<<ComboboxSelected>>", self.show_lookup_input)
@@ -140,13 +140,37 @@ class SteganographyGUI(tk.Tk):
             if display_secret_image:
                 stego_image.show()
         elif selected_algorithm == "DE":
-            pass
+            de = DE(self.image, text_input_content)
+            stego_image = de.secret_image
+
+            if save_images:
+                file_path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("Pliki PNG", "*.png"), ("Wszystkie pliki", "*.*")])
+                stego_image.save(file_path)
+            if display_stats:
+                messagebox.showinfo("Statystyki DE", f"Czas: {de.time_diff:.2f} sekundy\n"
+                                                     f"MSE: {calculate_mse(self.image, stego_image):.2f}\n"
+                                                     f"PSNR: {calculate_psnr(self.image, stego_image):.2f}")
+            if display_secret_image:
+                stego_image.show()
+
+            # Save the lookup string to a file
+            file_path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Pliki tekstowe", "*.txt"), ("Wszystkie pliki", "*.*")])
+            if file_path:
+                with open(file_path, 'w', encoding='utf-8') as file:
+                    file.write(de.lookup_string)
         elif selected_algorithm == "PVD":
-            pass
-        elif selected_algorithm == "DCT":
-            pass
-        elif selected_algorithm == "IWT":
-            pass
+            pvd = PVD(self.image, text_input_content)
+            stego_image = pvd.secret_image
+
+            if save_images:
+                file_path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("Pliki PNG", "*.png"), ("Wszystkie pliki", "*.*")])
+                stego_image.save(file_path)
+            if display_stats:
+                messagebox.showinfo("Statystyki PVD", f"Czas: {pvd.time_diff:.2f} sekundy\n"
+                                                     f"MSE: {calculate_mse(self.image, stego_image):.2f}\n"
+                                                     f"PSNR: {calculate_psnr(self.image, stego_image):.2f}")
+            if display_secret_image:
+                stego_image.show()
 
     def start_decoding(self):
         """Handle the start decoding process."""
@@ -178,10 +202,6 @@ class SteganographyGUI(tk.Tk):
             file_path = filedialog.asksaveasfilename(defaultextension=".txt", filetypes=[("Pliki tekstowe", "*.txt"), ("Wszystkie pliki", "*.*")])
             with open(file_path, 'w', encoding='utf-8') as file:
                 file.write(decoded_text)
-        elif selected_algorithm == "DCT":
-            pass
-        elif selected_algorithm == "IWT":
-            pass
 
 if __name__ == "__main__":
     app = SteganographyGUI()

@@ -2,7 +2,6 @@ import numpy as np
 from PIL import Image
 from numpy import ndarray
 from time import time
-import cv2
 from pywt import dwtn, idwtn
 from scipy.fftpack import dct, idct, dctn, idctn
 
@@ -25,6 +24,7 @@ class LSB:
         if secret_message is not None:
             self.secret_message = secret_message
             self.binary_secret_message = self._encode_secret_message(secret_message)
+            self.used_pixels = 0
 
             self._check_if_image_fits()
 
@@ -105,6 +105,7 @@ class LSB:
                                                                                            pixel_index][0]]
             bits_left -= self.num_of_bits_to_embed[pixel_index][0]
             bits_embedded += self.num_of_bits_to_embed[pixel_index][0]
+            self.used_pixels += 1
 
             if bits_left > 0:
                 new_g = self.binary_image[pixel_index][1]
@@ -114,6 +115,7 @@ class LSB:
                                                                                                pixel_index][1]]
                 bits_left -= self.num_of_bits_to_embed[pixel_index][1]
                 bits_embedded += self.num_of_bits_to_embed[pixel_index][1]
+                self.used_pixels += 1
             else:
                 new_g = self.binary_image[pixel_index][1]
 
@@ -125,6 +127,7 @@ class LSB:
                                                                                                pixel_index][2]]
                 bits_left -= self.num_of_bits_to_embed[pixel_index][2]
                 bits_embedded += self.num_of_bits_to_embed[pixel_index][2]
+                self.used_pixels += 1
             else:
                 new_b = self.binary_image[pixel_index][2]
 
@@ -182,6 +185,7 @@ class DE:
         self.channel_values = self._encode_image()
 
         if secret_message is not None:
+            self.used_pixels = 0
             self.secret_message = secret_message
             self.encoded_secret_message = self._encode_secret_message(secret_message)
             self.secret_image, self.lookup_string = self._embed_secret_message()
@@ -228,6 +232,7 @@ class DE:
                     secret_image_channel_values.append(y_prime)
                     secret_bit_index += 1
                     lookup_string += '1'
+                self.used_pixels += 2
             else:
                 break
 
@@ -311,6 +316,7 @@ class PVD:
         self.image_width, self.image_height = image.size
         self.image_array = self._encode_image()
         if secret_message is not None:
+            self.used_pixels = 0
             self.secret_message = secret_message
             self.encoded_secret_message = self._encode_secret_message(secret_message)
             self.secret_image = self._embed_secret_message()
@@ -376,6 +382,8 @@ class PVD:
                                     p_x_prime = p_x_prime + 2**n
 
                                 secret_image[i, j, k] = p_x_prime
+
+                                self.used_pixels += 1
                             else:
                                 break
                     else:
@@ -432,6 +440,7 @@ class PVD:
         return byte_array.decode('utf-8', errors='ignore')
 
 class DCT:
+    """Not working as intended."""
     def __init__(self, image: Image, secret_message: str = None):
         self.start_time = time()
         self.image = image.convert('RGB')
@@ -550,6 +559,7 @@ class DCT:
 
 
 class IWT:
+    """Not working as intended."""
     def __init__(self, image: Image, secret_message: str = None):
         self.start_time = time()
         self.image = image.convert('RGB')

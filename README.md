@@ -7,5 +7,3 @@ image using:
 - Least Significant Bit (LSB)
 - Pixel Value Differencing (PVD)
 - Difference Expansion (DE)
-- Discrete Cosine Transform (DCT)
-- Integer Wavelet Transform (IWT)
